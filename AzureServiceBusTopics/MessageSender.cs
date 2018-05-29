@@ -6,7 +6,7 @@
 
     using Microsoft.Azure.ServiceBus;
 
-    internal class Program
+    internal class MessageSender
     {
         private const string ServiceBusConnectionString = "Endpoint=sb://helensbnstopics.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=mBSqgAKVbAiiSxieIJ1yqfaKhlO+IFg2T8u7fbyZink=";
 
@@ -37,7 +37,7 @@
 
         }
 
-        private static async Task SendMessagesAsync(int numberOfMessagesToSend)
+        public static async Task SendMessagesAsync(int numberOfMessagesToSend)
         {
             try
             {
