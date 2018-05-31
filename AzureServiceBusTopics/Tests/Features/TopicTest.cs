@@ -2,16 +2,14 @@
 {
     using System;
     using System.Text;
+    using System.Threading;
     using System.Threading.Tasks;
 
     using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.InteropExtensions;
-    using Microsoft.ServiceBus;
-    using Microsoft.ServiceBus.Messaging;
+
+    using Mossharbor.AzureWorkArounds.ServiceBus;
 
     using NUnit.Framework;
-
-    using Shouldly;
 
     using TestStack.BDDfy;
 
@@ -25,19 +23,34 @@
         private const string ServiceBusConnectionString =
             "Endpoint=sb://helensbnstopics.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=mBSqgAKVbAiiSxieIJ1yqfaKhlO+IFg2T8u7fbyZink=";
 
-        private const string SubscriptionName = "testsubscription";
+        private const string SubscriptionName = "testSubscription";
 
-        private const string TopicName = "firsttopic";
+        private const string TopicName = "testTopicSubscription";
 
         private static TopicClient testTopicClient;
 
         private static SubscriptionClient testSubscriptionClient;
 
-        private static OnMessageOptions options;
-
         private static NamespaceManager namespaceManager;
 
         private static Message message;
+
+        private static async Task ProcessMessagesAsync(Message message, CancellationToken token)
+        {
+            Console.WriteLine($"Received message: SequenceNumber:{message.SystemProperties.SequenceNumber} Body:{Encoding.UTF8.GetString(message.Body)}");
+            await testSubscriptionClient.CompleteAsync(message.SystemProperties.LockToken);
+        }
+
+        private static Task ExceptionReceivedHandler(ExceptionReceivedEventArgs exceptionReceivedEventArgs)
+        {
+            Console.WriteLine($"Message handler encountered an exception {exceptionReceivedEventArgs.Exception}");
+            var context = exceptionReceivedEventArgs.ExceptionReceivedContext;
+            Console.WriteLine("Exception context for troubleshooting: ");
+            Console.WriteLine($"- Endpoint: {context.Endpoint}");
+            Console.WriteLine($"- Entity Path: {context.Endpoint}");
+            Console.WriteLine($"- Executing Action: {context.Action}");
+            return Task.CompletedTask;
+        }
 
         [Test]
         public void TopicHappyPathTest()
@@ -60,18 +73,19 @@
             testTopicClient = new TopicClient(ServiceBusConnectionString, TopicName);
             testSubscriptionClient = new SubscriptionClient(ServiceBusConnectionString, TopicName, SubscriptionName);
 
-            // create test subscription
             namespaceManager = NamespaceManager.CreateFromConnectionString(ServiceBusConnectionString);
-            namespaceManager.CreateSubscription(TopicName, TEST_MESSAGE_SUB);
-
-            options = new OnMessageOptions() { AutoComplete = false, AutoRenewTimeout = TimeSpan.FromMinutes(1), };
         }
 
         private void TheMessageIsPublished()
         {
-            string receivedMessage = message.GetBody<string>();
+            var messageHandlerOptions = new MessageHandlerOptions(ExceptionReceivedHandler)
+            {
+                MaxConcurrentCalls = 1,
+                AutoComplete = false
+            };
 
-            receivedMessage.ShouldBe("Test Message");
+            testSubscriptionClient.RegisterMessageHandler(ProcessMessagesAsync, messageHandlerOptions);
+            Assert.That(message.Body, Is.EqualTo("Test Message"));
         }
 
         private void TheMessageIsSent()
